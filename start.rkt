@@ -211,6 +211,7 @@
                 [(x y) (error "Match failure")]))
 
 ;; run :: s-expr -> number
+; evalué la expresión en un ambiente donde se tiene la definición de Lista de los ejemplos anteriores.
 (defun (run prog)
   (interp (parse {list 'local {list {list 'datatype 'List {list 'Empty} {list 'Cons 'a 'b}}} prog}) empty-env))
 
@@ -289,6 +290,7 @@ update-env! ::
     (or      ,(lambda args (apply (lambda (x y) (or x y)) args)))))
 
 ; make-list :: List<Int> -> Expr
+; dada una lista de enteros de Scheme retorna una expresión de MiniScheme+ que representa la lista dada, usando la definición del datatype List
 (define (make-list lst)
   (if (empty? lst)
       (list 'Empty)

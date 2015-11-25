@@ -61,8 +61,30 @@
 ; MIS TESTS
 ;(1.0)
 ;Extienda la función run
+(test (run '{{fun {x y z} {+ x y z}} 1 2 3}) 6)
+(test (run '{with {{x 1} {y 2} {z 3}} {+ x y z}}) 6)
+(test (run '{with {} {{fun {} 42}}}) 42)
+(test (run '{local {{define x 1} 
+                {define y 2}} 
+           {+ x y}}) 3)
+(test (run '{local {{datatype List 
+                  {Empty} 
+                  {Cons a b}}}
+          {List? {Empty}}})
+#t)
+(test (run '{local {{datatype List 
+                  {Empty} 
+                  {Cons a b}}}
+           {match {Cons 1 {Cons 2 {Empty}}}
+             {case {Cons a b} => a}}})
+1)
 (test (run '{List? {Empty}}) #t)
+(test (run '{List? {Cons 2 Empty}}) #t)
+(test (run '{List? {Cons 3}}) #t)
 ;Implemente la función (make-list l)
+(test (make-list (list 1 2 3 4)) '(Cons 1 (Cons 2 (Cons 3 (Cons 4 (Empty))))))
+(test (make-list (list)) '(Empty))
+(test (make-list (list 3)) '(Cons 3 (Empty)))
 (test (make-list (list 1 2 3 4)) '(Cons 1 (Cons 2 (Cons 3 (Cons 4 (Empty))))))
 ;Extienda el lenguaje para soportar una sintaxis para crear listas
 (test (run '{match {list 1 2}
