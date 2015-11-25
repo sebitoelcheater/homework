@@ -46,6 +46,7 @@
   (lcal defs body)
   (datatype name variants)
   (my-match val cases)
+  (lazy lazy-expr env)
   )
 
 ;AST for {define <id> <expr>}
@@ -130,8 +131,9 @@
                       (interp body
                               (multi-extend-env ids arg-vals env)))]
     
-    [(app fun-expr arg-expr-list)
-     ((interp fun-expr env) (map (λ (a) (interp a env)) arg-expr-list))]
+    [(app (fun ids fexpr) arg-expr-list) 
+     ((interp (fun ids fexpr) env) (clean-sebito ids arg-expr-list env))]
+    ;(map (λ (a) (if (contains? (get-lazys fun-expr) ))(begin (print fun-expr) (λ () (interp a env)))) arg-expr-list)
     
     [(prim-app prim arg-expr-list)
      (apply (cadr (assq prim *primitives*))
@@ -141,6 +143,8 @@
      (def new-env (aEnv '() env))            
      (for-each (λ (d) (interp-def d new-env)) defs) 
      (interp body new-env)]
+    
+    [(lazy l-expr l-env) (interp l-expr l-env)]
     
     [(my-match expr cases)
      (def value-matched (interp expr env))
@@ -260,7 +264,10 @@ update-env! ::
                 [((list) _) env]
                 [(_ (list)) env]
                 [((cons id ids) (cons val vals))
-                 (multi-extend-env ids vals (extend-env id val env))]))
+                 (match id
+                   [(? symbol?) (multi-extend-env ids vals (extend-env id val env))]
+                   [(list 'lazy id2) (multi-extend-env ids vals (extend-env id2 val env))])]))
+;(begin (print val) (multi-extend-env ids vals (extend-env id val env)))
 
 ;; update-env! :: Env Sym Val -> Void
 ;; imperative update of env, adding/overring the binding for id.
@@ -293,3 +300,36 @@ update-env! ::
   (if (empty? lst)
       (list 'Empty)
       (list 'Cons (car lst) (make-list (cdr lst)))))
+
+; get-lazys :: Expr<Fun> -> List<Expr>
+(define (get-lazys expr-fun)
+  (match expr-fun
+    [(fun ids body) (foldl (λ (id lazys) (if (is-lazy? id)
+                                            (cons (cadr id) lazys)
+                                            lazys)) '() ids)]))
+
+;is-lazy? :: Expr -> Boolean
+(define (is-lazy? expr)
+  (match expr
+    [(? symbol?) #f]
+    [(list 'lazy id) #t]
+    [else (error "falsa alarma")]))
+
+; contains? :: List, Val -> Boolean
+; Verifica que en la lista entregada exista un elemento cuyo valor sea igual al entregado.
+; De ser así retorna verdadero, de no ser así retorna falso.
+(define (contains? lst val)
+  (match lst
+    [(list) #f]
+    [(cons h t) (or (equal? val h) (contains? t val))]))
+
+(define (clean-sebito ids arg-expr-list l-env)
+  (if (or (empty? ids) (empty? arg-expr-list))
+      '()
+      (let
+      ([id (car ids)]
+       [arg (car arg-expr-list)])
+    (if (is-lazy? id)
+        (cons (lazy arg l-env) (clean-sebito (cdr ids) (cdr arg-expr-list) l-env))
+        (cons arg (clean-sebito (cdr ids) (cdr arg-expr-list) l-env))))
+      ))

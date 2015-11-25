@@ -69,3 +69,6 @@
           {case {Cons h r} => h}
           {case _ => 2}}) 1)
 (test (run '{Cons? {list 1 2}}) #t)
+
+;get-lazys
+(test (get-lazys (fun '(x (lazy y)) (id 'x))) '(y))
