@@ -68,6 +68,7 @@
   (constrP ctr patterns))
 
 ;; parse :: s-expr -> Expr
+; realiza el parse se una SExpr a una Expr
 (defun (parse s-expr)
   (match s-expr
     [(? number?) (num s-expr)]
@@ -114,7 +115,9 @@
     [(? boolean?) (litP (bool p))]        
     [(list ctr patterns ...) (constrP (first p) (map parse-pattern patterns))]))
 
+;MODIFICADA
 ;; interp :: Expr Env -> number/procedure
+; es el intérprete
 (defun (interp expr env)
   (match expr
     [(num n) n]
@@ -124,14 +127,23 @@
      (if (interp c env)
          (interp t env)
          (interp f env))]
-    [(id x) (env-lookup x env)]
+    [(id x) (env-lookup x env) #;(match (env-lookup x env)
+              [(? procedure?) ((env-lookup x env))]
+              [else else])]
     
     [(fun ids body) (λ (arg-vals)       
                       (interp body
-                              (multi-extend-env ids arg-vals env)))]
+                              (multi-extend-env
+                               (map (λ (id) (match id
+                                                 [(? symbol?) id]
+                                                 [(list 'lazy l-id) l-id])) ids)
+                               (map (λ (id arg) (match id
+                                                  [(? symbol?) (arg)]
+                                                  [(list 'lazy l-id) arg])) ids arg-vals)
+                               env)))]
     
     [(app fun-expr arg-expr-list)
-     ((interp fun-expr env) (map (λ (a) (interp a env)) arg-expr-list))]
+     ((interp fun-expr env) (map (λ (a) (λ () (interp a env))) arg-expr-list))]
     
     [(prim-app prim arg-expr-list)
      (apply (cadr (assq prim *primitives*))
@@ -164,13 +176,19 @@
      (interp-datatype name env)
      (for-each (λ (v) (interp-variant name v env)) variants)]))
 
+;MODIFICADA
+; interp-datatype :: Symbol Env -> Procedure
 (defun (interp-datatype name env)
   (update-env! env
                (string->symbol (string-append (symbol->string name) "?"))
                (λ (v)
                  (match (first v)
+                   [(? procedure?) (match ((first v))
+                                     [(structV n var _) (symbol=? n name)])]
                    [(structV n var _) (symbol=? n name)]))))
 
+;MODIFICADA
+; interp-variant :: Symbol Variant Env -> Procedure
 (defun (interp-variant name var env)  
   ;; name of the variant or dataconstructor
   (def varname (variant-name var))
@@ -179,13 +197,17 @@
   (update-env! env
                varname
                (λ (args)
-                 (structV name varname args)))
+                 (structV name varname (map (λ (id arg) (match id
+                                                          [(? symbol?) (arg)]
+                                                          [else arg])) (variant-params var) args))))
   
   ;; variant predicate
   (update-env! env
                (string->symbol (string-append (symbol->string varname) "?"))
                (λ (v)
                  (match (first v)
+                   [(? procedure?) (match ((first v))
+                                     [(structV _ var _) (symbol=? var varname)])]
                    [(structV _ var _) (symbol=? var varname)]))))
 
 (defun (find-first-matching-case value cases)
@@ -196,6 +218,8 @@
        [#f (find-first-matching-case value cs)]
        [assocList (cons assocList body)])]))
 
+;MODIFICADA
+; match-pattern-with-value :: Pattern Value -> Expr
 (defun (match-pattern-with-value pattern value)
   (match/values (values pattern value)
                 [((idP i) v) (list (cons i v))]
@@ -208,22 +232,37 @@
                      (apply append (map match-pattern-with-value
                                         patterns str-values))
                      #f)]
-                [(x y) (error "Match failure")]))
+                [(x y) (match y
+                         [(? procedure?) (match-pattern-with-value x (y))]
+                         [else (error "Match failure")])]))
 
 ;; run :: s-expr -> number
 ; evalué la expresión en un ambiente donde se tiene la definición de Lista de los ejemplos anteriores.
-(defun (run prog)
-  (interp (parse {list 'local {list {list 'datatype 'List {list 'Empty} {list 'Cons 'a 'b}}} prog}) empty-env))
+#;(defun (old-run prog)
+  (interp-lazy
+   (interp (parse {list 'local {list {list 'datatype 'List {list 'Empty} {list 'Cons 'a 'b}}} prog}) empty-env)))
 
-;; Para Sección 3
-;(defun (run prog)  
-;  (print-list (interp (parse prog) empty-env)))
-;
-;(defun (print-list e)
-;  (match e
-;    [(structV 'List Empty (list)) '()]
-;    [(structV 'List Cons (list h t)) (cons h (print-list t))]
-;    [else e]))
+; interp-lazy :: Expr -> Expr
+; realiza la interpretación para expresiones que vienen como procedures producto de lazyness.
+(defun (interp-lazy lazy-expr)
+  (match lazy-expr
+    [(? procedure?) (interp-lazy (lazy-expr))]
+    [else lazy-expr]))
+
+; Para Sección 3
+;; run :: s-expr -> number
+; evalué la expresión en un ambiente donde se tiene la definición de Lista de los ejemplos anteriores.
+(defun (run prog)  
+  (print-list (interp-lazy
+   (interp (parse {list 'local {list {list 'datatype 'List {list 'Empty} {list 'Cons 'a 'b}}} prog}) empty-env))))
+
+; print-list Expr -> List
+; printea la expresión
+(defun (print-list e)
+  (match e
+    [(structV 'List Empty (list)) '()]
+    [(structV 'List Cons (list h t)) (cons h (print-list t))]
+    [else e]))
 
 
 
@@ -295,3 +334,65 @@ update-env! ::
   (if (empty? lst)
       (list 'Empty)
       (list 'Cons (car lst) (make-list (cdr lst)))))
+; Estructura Stream que evite evaluar su cola a menos que sea estrictamente necesario.
+#;(def stream-data '{datatype Stream
+                            {Empty} 
+                            {SCons h {lazy t}}})
+
+#;(def make-stream '{define make-stream {fun {d {lazy l}}
+                                         {SCons d {lazy l}}}})
+
+; stream-data
+(def stream-data '{datatype Stream
+                            {StrCons hd {lazy tl}}
+                            {StrEmpty}})
+(def make-stream '{define make-stream  {fun {hd
+                                            {lazy tl}}
+                                            {StrCons hd tl}}})
+
+; ones
+(def ones '{define ones {make-stream 1 ones}})
+
+; stream-hd
+; para obtener la cabeza de un stream
+(def stream-hd '{define stream-hd {fun {str}
+                                       {match str
+                                         [case {StrCons h t} => h]}}})
+
+; stream-tl
+; para obtener la cola de un stream
+(def stream-tl '{define stream-tl {fun {str}
+                                       {match str
+                                         [case {StrCons h t} => t]}}})
+
+; stream-take
+; retorna una lista con los primeros n elementos de stream. 
+(def stream-take '{define stream-take {fun {n str}
+                                           {match str
+                                             [case {StrCons h t}
+                                               => {if {> n 0}
+                                                      {Cons h {stream-take {- n 1} t}}
+                                                      {Empty}}]
+                                             [case {StrEmpty}
+                                               => {Empty}]}}})
+; stream-lib
+; dada en el enunciado
+(def stream-lib (list stream-data
+                        make-stream
+                        stream-hd
+                        stream-tl
+                        stream-take))
+
+(def stream-zipWith '{define stream-zipWith {fun {fZip str1 str2}
+                                                 {match str1
+                                                   [case {StrCons h1 t1} => 
+                                                     {match str2
+                                                       [case {StrCons h2 t2} =>
+                                                         {make-stream {fZip h1 h2} {stream-zipWith fZip t1 t2}}]}]}}})
+(def fibs '{define fibs {make-stream 1 ones}})
+(def fibs '{define fibs {fun {fZip str1 str2}
+                             {match str1
+                               [case {StrCons h1 t1} => 
+                                 {match str2
+                                   [case {StrCons h2 t2} =>
+                                     {make-stream {fZip h1 h2} {stream-zipWith fZip t1 t2}}]}]}}})

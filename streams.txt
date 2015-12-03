@@ -1,0 +1,36 @@
+(def stream-data '{datatype Stream
+                            {StrCons hd {lazy tl}}})
+(def make-stream '{define make-stream  {fun {hd
+                                            {lazy tl}}
+                                            {StrCons hd tl}}})
+(def ones '{define ones {make-stream 1 ones}})
+(def stream-hd '{define stream-hd {fun {stream}
+                                       {match stream
+                                         {case {StrCons hd tl} => hd}}}})
+(def stream-tl '{define stream-tl {fun {stream}
+                                       {match stream
+                                         {case {StrCons hd tl} => tl}}}})
+                                             
+(def stream-take '{define stream-take {fun {n stream}{match stream
+                                              {case {StrCons hd tl} => {if {= n 0} {Empty} {Cons hd {stream-take {- n 1} tl}}}}}}})
+(def stream-lib (list stream-data
+                      make-stream
+                      stream-hd
+                      stream-tl
+                      stream-take))
+(def stream-zipWith '{define stream-zipWith {fun {f stream1 stream2}
+                                                 {match stream1
+                                                   {case  {StrCons hd1 tl1} => {match stream2
+                                                                               {case {StrCons hd2 tl2} => (make-stream (f hd1 hd2)
+                                                                                                                     (stream-zipWith f tl1 tl2))}}}}}})
+(def fibs '{define fibs {make-stream 1 {make-stream 1 {stream-zipWith
+                                                       {fun {x y}
+                                                            {+ x y}} fibs {stream-tl fibs}}}}})
+(def merge-sort '{define merge-sort {fun {stream1 stream2}
+                                         {match stream1
+                                           {case  {StrCons hd1 tl1} =>
+                                             {match stream2
+                                               {case {StrCons hd2 tl2} =>
+                                                 {if {< hd1 hd2}
+                                                     {make-stream hd1 {make-stream hd2 {merge-sort tl1 tl2}}}
+                                                     {make-stream hd2 {make-stream hd1 {merge-sort tl1 tl2}}}}}}}}}})
